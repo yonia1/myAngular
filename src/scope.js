@@ -92,7 +92,7 @@ Scope.prototype.$digest = function() {
 };
 Scope.prototype.$applyAsync = function(){
     var self = this;
-    self
+
 };
 
 Scope.prototype.$apply = function ( expr ){
