@@ -36,6 +36,84 @@ describe("Scope", function() {
             scope.$digest();
             expect(listenerFn).toHaveBeenCalled();
         });
+        it("has a $$phase field whose value is the current digest phase",function () {
+            scope.aValue = [1,2,3];
+            scope.phaseInWatchFunction = undefined ;
+            scope.phaseInListenerFunction = undefined;
+            scope.phaseInApplyFunction = undefined;
+            scope.$watch(
+                function (scope ){
+                    scope.phaseInWatchFunction = scope.$$phsae; // get the phase
+
+                },
+                function(newValue, oldValue ,scope)
+                {
+                    scope.phaseInListenerFunction = scope.$$phase ;
+                }
+
+            );
+            scope.$apply(function (scope) {
+                scope.phaseInApplyFunction = scope.$$phase;
+            });
+
+            expect(scope.phaseInWatchFunction).toBe('$digest');
+            expect(scope.phaseInListenerFunction).toBe('$digest');
+            expect(scope.phaseInApplyFunction).toBe('$apply');
+        });
+        it("schedules a digest in $evalAsync" , function(done) {
+            scope.aValue = "abc";
+            scope.counter = 0;
+            scope.$watch(function (scope){
+                return scope.aValue ;
+            },function (newValuem, oldValue , scope){
+                scope.counter++ ;
+            });
+            scope.$evalAsync( function (scope ) {});
+
+            expect (scope.counter).toBe(0);
+            setTimeout(function () {
+                expect(scope.counter).toBe(1);
+                done();
+            },50);
+
+        });
+        it('allows async $apply with $applyAsunc', function (done) {
+            scope.counter = 0;
+
+            scope.$watch(
+                function(scope) {return scope.aValue;},
+                function(newValue ,oldValue , scope) {
+                    scope.counter++;
+                }
+            );
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+            scope.$applyAsync(function(scope) {
+                scope.aValue ='abc';
+            });
+            expect(scope.counter).toBe(1);
+            setTimeout(function() {
+                expect(scope.counter).toBe(1);
+                don();
+            },50);
+
+        });
+        it("exrcuters $evalAsync'ed functions added by watch functions" , function() {
+            scope.aValue = [1,2,3];
+            scope.asyncEvaluated = false;
+            scope.$watch(
+                function(scope){
+                    if(!scope.asyncEvaluated)
+                    {
+                        scope.$evalAsync(function(scope) {
+                            scope.asyncEvaluated = true;
+                        });
+                    }return scope.aValue;
+                }, function(newValue ,oldValue , scope) { }
+            );
+            scope.$digest();
+            expect(scope.asyncEvaluated.toBe(true));
+        });
         it("calls listener when watch value is first undefined", function() {
             scope.counter = 0;
             scope.$watch(

@@ -5,8 +5,10 @@ function Scope() {
     this.$$watchers = []; // all the watchers that where defined on the scope
     this.$$lastDirtyWatch = null;
     this.$$asyncQueue = [] ; // a queue to run when digest cycle kicks in
+    this.$$phase = null; // the current phase of the current scope
 
 }
+
 Scope.prototype.$watch =function(watchFn, listenFn ,valueEq ) {
     var watcher = { //create the watcher object in the scope watch function and add it to the watchers
         watchFn : watchFn,
@@ -18,6 +20,15 @@ Scope.prototype.$watch =function(watchFn, listenFn ,valueEq ) {
     this.$$watchers.push(watcher);
     this.$$lastDirtyWatch = null;
 
+};
+Scope.prototype.$beginPhase = function (phase) {
+  if (this.$$phase){
+      throw this.$$phase +" already in progress.";
+  }
+    this.$$phase = phase;
+};
+Scope.prototype.$clearPhase = function () {
+    this.$$phase = null;
 };
 Scope.prototype.$$areEqual = function(newValue, oldValue, valueEq) {
     if (valueEq) {
@@ -31,8 +42,16 @@ Scope.prototype.$$areEqual = function(newValue, oldValue, valueEq) {
 Scope.prototype.$eval=function(expr ,locals){
     return expr(this,locals); // this is the scope we are running on
 };
-Scope.prot.$evalAsync= function (expr ){
-    this.$$asyncQueue.push({scope: this ,expression : expr})
+Scope.prototype.$evalAsync= function (expr ){
+    var self = this;
+    if(!self.$phase && !self.$$asyncQueue.length){
+        setTimeout(function() {
+            if(self.$$asyncQueue.length){
+                self.$digest();
+            }
+        },0);
+    }
+    this.$$asyncQueue.push({scope: this ,expression : expr});
 };
 Scope.prototype.$$digestOnce = function() {
     var self =this ;  // keep the this reference in other scopes
@@ -53,27 +72,40 @@ Scope.prototype.$$digestOnce = function() {
     });
     return dirty;  // if now value was change on  the current run
 };
-
 Scope.prototype.$digest = function() {
-    var dirty;
     var ttl = 10;
-    this.$$lastDirtyWatch = null;  /// firsr run set null , if there is a full run that returns to the same watcher the init the cycle then stop
-    do { // keep the digest running as long as values are dirty
+    var dirty;
+    this.$$lastDirtyWatch = null;
+    this.$beginPhase("$digest");
+    do {
+        while (this.$$asyncQueue.length) {
+            var asyncTask = this.$$asyncQueue.shift();
+            asyncTask.scope.$eval(asyncTask.expression);
+        }
         dirty = this.$$digestOnce();
-        if (dirty && ! ( ttl-- ))
-            throw  ("10 digest iterations reached");
-
-    } while (dirty);
+        if ((dirty && this.$$asyncQueue.length ) && !(ttl--)) {
+            this.$clearPhase();
+            throw "10 digest iterations reached";
+        }
+    } while (dirty || this.$$asyncQueue.length);
+    this.$clearPhase();
 };
+Scope.prototype.$applyAsync = function(){
+    var self = this;
+    self
+};
+
 Scope.prototype.$apply = function ( expr ){
     try
     { // try and run the function if fails or not still run digest
+        this.$beginPhase("$apply");
         this.$eval(expr,this);
     }
     finally {
-
+        this.$clearPhase();
         this.$digest();
     }
 
 
-}
+};
+
