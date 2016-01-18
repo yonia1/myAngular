@@ -5,7 +5,9 @@ function Scope() {
     this.$$watchers = []; // all the watchers that where defined on the scope
     this.$$lastDirtyWatch = null;
     this.$$asyncQueue = [] ; // a queue to run when digest cycle kicks in
+    this.$$applyAsyncQueue = []; // for work that has een schedled with $applyAsync
     this.$$phase = null; // the current phase of the current scope
+    this.$$applyAsyncId = null// we need to is keep track of whether a setTimeout to drain the queue has already been scheduled
 
 }
 
@@ -77,6 +79,10 @@ Scope.prototype.$digest = function() {
     var dirty;
     this.$$lastDirtyWatch = null;
     this.$beginPhase("$digest");
+    if(this.$$applyAsyncId) {
+        clearTimeout(this.$$applyAsyncId);
+        this.$$flushApplyAsync();
+    }
     do {
         while (this.$$asyncQueue.length) {
             var asyncTask = this.$$asyncQueue.shift();
@@ -90,8 +96,26 @@ Scope.prototype.$digest = function() {
     } while (dirty || this.$$asyncQueue.length);
     this.$clearPhase();
 };
-Scope.prototype.$applyAsync = function(){
-    var self = this;
+/**
+ *
+ * @param expr - function to run from apply on the async queue
+ */
+Scope.prototype.$applyAsync = function(expr){
+    var self = this; // catch a reference to the scope object
+    self.$$applyAsyncQueue.push(function(){
+        self.$eval(expr)
+    });
+    // check the attrubute when scheduling a job and maintiain its state when the job is scheduled and when it finishes
+    // actulaly schedule the function application with set timeout delay 0
+
+    if(self.$$applyAsyncId === null) {
+        self.$$applyAsyncId=  setTimeout(function () {
+
+
+                self.$apply(_.bind(self.$$flushApplyAsync, self));
+
+        }, 0); // add to the event loop and run soon as possible
+    }
 
 };
 
@@ -106,6 +130,19 @@ Scope.prototype.$apply = function ( expr ){
         this.$digest();
     }
 
+
+};
+/**
+ * run the remain async tasks in the queue
+ */
+Scope.prototype.flushApplyAsync = function() {
+
+    while(this.$$applyAsyncQueue.length) {
+        var task this.$$applyAsyncQueue.shift();
+        task();
+
+    }
+    this.$$applyAsyncId = null;
 
 };
 
