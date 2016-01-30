@@ -7,6 +7,7 @@ function Scope() {
     this.$$asyncQueue = [] ; // a queue to run when digest cycle kicks in
     this.$$applyAsyncQueue = []; // for work that has een schedled with $applyAsync
     this.$$phase = null; // the current phase of the current scope
+    scope.$$postDigestQueue = []; //
     this.$$applyAsyncId = null// we need to is keep track of whether a setTimeout to drain the queue has already been scheduled
 
 }
@@ -21,6 +22,13 @@ Scope.prototype.$watch =function(watchFn, listenFn ,valueEq ) {
     };//now add it the watchers array
     this.$$watchers.push(watcher);
     this.$$lastDirtyWatch = null;
+    return function() { // return a function that when is invoke uses closuer and removes the watcher from
+        // the queue
+        var index = self.$$watchers.indexOf(watcher);
+        if(index >=0){
+            self.$$watchers.splice(index, 1);
+        }
+    };
 
 };
 Scope.prototype.$beginPhase = function (phase) {
@@ -56,20 +64,24 @@ Scope.prototype.$evalAsync= function (expr ){
     this.$$asyncQueue.push({scope: this ,expression : expr});
 };
 Scope.prototype.$$digestOnce = function() {
-    var self =this ;  // keep the this reference in other scopes
+    var self = this ;  // keep the this reference in other scopes
     var newValue, oldValue, dirty ;
     _.forEach(this.$$watchers ,function (watcher) {
-        newValue = watcher.watchFn(self);
-        oldValue = watcher.last;
-        if (newValue !== oldValue) {
-            watcher.last = newValue;
-            watcher.listenFn(newValue,
-                (oldValue === initWatchVal ? newValue : oldValue),
-                self);
-            dirty = true;
-            self.$$lastDirtyWatch = watcher;  //set last dirty watch
-        }else if (self.$$lastDirtyWatch === watcher) {
-            return false;
+        try {
+            newValue = watcher.watchFn(self);
+            oldValue = watcher.last;
+            if (newValue !== oldValue) {
+                watcher.last = newValue;
+                watcher.listenFn(newValue,
+                    (oldValue === initWatchVal ? newValue : oldValue),
+                    self);
+                dirty = true;
+                self.$$lastDirtyWatch = watcher;  //set last dirty watch
+            } else if (self.$$lastDirtyWatch === watcher) {
+                return false;
+            }
+        }catch(e) {
+            console.error(e);
         }
     });
     return dirty;  // if now value was change on  the current run
@@ -85,8 +97,12 @@ Scope.prototype.$digest = function() {
     }
     do {
         while (this.$$asyncQueue.length) {
-            var asyncTask = this.$$asyncQueue.shift();
-            asyncTask.scope.$eval(asyncTask.expression);
+            try {
+                var asyncTask = this.$$asyncQueue.shift();
+                asyncTask.scope.$eval(asyncTask.expression);
+            } catch(e){
+                console.error(e);
+            }
         }
         dirty = this.$$digestOnce();
         if ((dirty && this.$$asyncQueue.length ) && !(ttl--)) {
@@ -95,6 +111,15 @@ Scope.prototype.$digest = function() {
         }
     } while (dirty || this.$$asyncQueue.length);
     this.$clearPhase();
+    //Now go and use the post digest queue
+    while(this.$$postDigestQueue.length) {
+        try {
+            var task = this.$$postDigestQueue.shift(); //get the next first task
+            task(); // run the task
+        } catch (e) {
+            console.error(e);
+        }
+    }
 };
 /**
  *
@@ -138,11 +163,18 @@ Scope.prototype.$apply = function ( expr ){
 Scope.prototype.flushApplyAsync = function() {
 
     while(this.$$applyAsyncQueue.length) {
-        var task this.$$applyAsyncQueue.shift();
-        task();
+        try {
+            var task = this.$$applyAsyncQueue.shift();
+            task();
+        }catch(e) {
+            console.error(e);
+        }
 
     }
     this.$$applyAsyncId = null;
 
+};
+Scope.prototype.$$postDigest = function(fn) {
+    this.$$postDigestQueue.push(fn);
 };
 
