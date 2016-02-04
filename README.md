@@ -1,2 +1,2 @@
 # myAngular 
-currently on page 49 of the book
+currently on page 77 of the book
