@@ -11,6 +11,8 @@ function Scope() {
     this.$$postDigestQueue = []; //
     this.$$applyAsyncId = null;// we need to is keep track of whether a setTimeout to drain the queue has already been scheduled
     this.$$children = [] // add children array on root scope constructor
+    this.$$root = this; // this is the root scope so every child will inhert this property
+    // that is set only once , thanks to the protoypal inheritance chain
 }
 
 
@@ -125,29 +127,34 @@ Scope.prototype.$$everyScope = function (fn) {
 ;
 Scope.prototype.$$digestOnce = function () {
     var dirty;
-    var self = this;  // keep the this reference in other scopes
-    var newValue, oldValue, dirty;
-    _.forEachRight(this.$$watchers, function (watcher) {
-        try {
-            if (watcher) {
-                newValue = watcher.watchFn(self);
-                oldValue = watcher.last;
-                if (newValue !== oldValue) {
-                    watcher.last = newValue;
-                    watcher.listenFn(newValue,
-                        (oldValue === initWatchVal ? newValue : oldValue),
-                        self);
-                    dirty = true;
-                    self.$$lastDirtyWatch = watcher;  //set last dirty watch
-                } else if (self.$$lastDirtyWatch === watcher) {
-                    return false;
+    var continueLoop = true;
+    var self = this;
+    this.$$everyScope(function (scope) {
+        var newValue, oldValue;
+        _.forEachRight(scope.$$watchers, function (watcher) {
+            try {
+                if (watcher) {
+                    newValue = watcher.watchFn(scope);
+                    oldValue = watcher.last;
+                    if (!scope.$$areEqual(newValue, oldValue, watcher.valueEq)) {
+                        self.$$lastDirtyWatch = watcher;
+                        watcher.last = (watcher.valueEq ? _.cloneDeep(newValue) : newValue);
+                        watcher.listenerFn(newValue,
+                            (oldValue === initWatchVal ? newValue : oldValue),
+                            scope);
+                        dirty = true;
+                    } else if (self.$$lastDirtyWatch === watcher) {
+                        continueLoop = false;
+                        return false;
+                    }
                 }
+            } catch (e) {
+                console.error(e);
             }
-        } catch (e) {
-            console.error(e);
-        }
+        });
+        return continueLoop;
     });
-    return dirty;  // if now value was change on  the current run
+    return dirty;
 };
 Scope.prototype.$digest = function () {
     var ttl = 10;
@@ -214,7 +221,7 @@ Scope.prototype.$apply = function (expr) {
     }
     finally {
         this.$clearPhase();
-        this.$digest();
+        this.$$root.$digest(); // fetch the root scope element and start the digest cycle form there
     }
 
 
