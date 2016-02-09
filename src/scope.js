@@ -1,5 +1,6 @@
 /* jshint globalstrict: true */
 'use strict';
+
 function initWatchVal() {
 }
 function Scope() {
@@ -11,7 +12,7 @@ function Scope() {
     this.$$postDigestQueue = []; //
     this.$$applyAsyncId = null;// we need to is keep track of whether a setTimeout to drain the queue has already been scheduled
     this.$$children = [] // add children array on root scope constructor
-    this.$$root = this; // this is the root scope so every child will inhert this property
+    this.$root = this; // this is the root scope so every child will inhert this property
     // that is set only once , thanks to the protoypal inheritance chain
 }
 
@@ -27,12 +28,14 @@ Scope.prototype.$watch = function (watchFn, listenFn, valueEq) {
     };//now add it the watchers array to the begining of the array
     this.$$watchers.unshift(watcher);
     this.$$lastDirtyWatch = null;
+    this.$root.$$lastDirtyWatch = null;
     return function () { // return a function that when is invoke uses closuer and removes the watcher from
 
         var index = self.$$watchers.indexOf(watcher);
         if (index >= 0) {
             self.$$watchers.splice(index, 1);
             self.$$lastDirtyWatch = null;
+            self.$root.$$lastDirtyWatch = null;
         }
     };
 
@@ -102,48 +105,44 @@ Scope.prototype.$eval = function (expr, locals) {
     return expr(this, locals); // this is the scope we are running on
 };
 Scope.prototype.$evalAsync = function (expr) {
-    var self = this;
+    var self = this; // will happen in the next tic  of the event loop
     if (!self.$phase && !self.$$asyncQueue.length) {
-        setTimeout(function () {
+        setTimeout(function () { // the timeout is for the event  loop
             if (self.$$asyncQueue.length) {
-                self.$digest();
+                self.$root.$digest(); // once the event loops fires digest from the root
             }
         }, 0);
     }
     this.$$asyncQueue.push({scope: this, expression: expr});
 };
 Scope.prototype.$$everyScope = function (fn) {
-    if (fn(this)) { // invoke fn once for hte current scope and then recursively calls
-        // itself on each children
+    if (fn(this)) {
         return this.$$children.every(function (child) {
             return child.$$everyScope(fn);
         });
-    }
-    else {
+    } else {
         return false;
     }
-}
-
-;
+};
 Scope.prototype.$$digestOnce = function () {
     var dirty;
     var continueLoop = true;
     var self = this;
     this.$$everyScope(function (scope) {
-        var newValue, oldValue;
+        var newValue, oldValue
         _.forEachRight(scope.$$watchers, function (watcher) {
             try {
                 if (watcher) {
                     newValue = watcher.watchFn(scope);
                     oldValue = watcher.last;
                     if (!scope.$$areEqual(newValue, oldValue, watcher.valueEq)) {
-                        self.$$lastDirtyWatch = watcher;
+                        self.$$root.$$lastDirtyWatch = watcher;
                         watcher.last = (watcher.valueEq ? _.cloneDeep(newValue) : newValue);
                         watcher.listenerFn(newValue,
                             (oldValue === initWatchVal ? newValue : oldValue),
                             scope);
                         dirty = true;
-                    } else if (self.$$lastDirtyWatch === watcher) {
+                    } else if (self.$root.$$lastDirtyWatch === watcher) {
                         continueLoop = false;
                         return false;
                     }
@@ -152,14 +151,16 @@ Scope.prototype.$$digestOnce = function () {
                 console.error(e);
             }
         });
-        return continueLoop;
+        return dirty !== false;
     });
     return dirty;
 };
+
+
 Scope.prototype.$digest = function () {
     var ttl = 10;
     var dirty;
-    this.$$lastDirtyWatch = null;
+    this.$root.$$lastDirtyWatch = null;
     this.$beginPhase("$digest");
     if (this.$$applyAsyncId) {
         clearTimeout(this.$$applyAsyncId);
@@ -179,6 +180,7 @@ Scope.prototype.$digest = function () {
             this.$clearPhase();
             throw "10 digest iterations reached";
         }
+
     } while (dirty || this.$$asyncQueue.length);
     this.$clearPhase();
     //Now go and use the post digest queue
@@ -221,7 +223,7 @@ Scope.prototype.$apply = function (expr) {
     }
     finally {
         this.$clearPhase();
-        this.$$root.$digest(); // fetch the root scope element and start the digest cycle form there
+        this.$root.$digest(); // fetch the root scope element and start the digest cycle form there
     }
 
 
@@ -248,14 +250,23 @@ Scope.prototype.$$postDigest = function (fn) {
 };
 
 /*Scope inheritance */
-Scope.prototype.$new = function () {
+Scope.prototype.$new = function (isolated) {
     //In the function we first create a counstuctor function for the cfhild and put it
     // in a local variable we then set the scope as the prototype of ChildScope
+    var child;
+    if (isolated) { // if its isolated then it doesnt inhertes form the parent 
+        child = new Scope();
+        child.$root = this.$root;
+        child.$$asyncQueue = this.$$asyncQueue;
+        child.$$postDigestQueue =this.$$postDigestQueue;
+        child.$$applyAsyncQueue = this.$$applyAsyncQueue;
+    }
+    else {
+        var ChildScope = function () {}; // create a new empty function
+        ChildScope.prototype = this;  // set the function prot to this
+        child = new ChildScope();  // create the function
 
-    var ChildScope = function () {
-    }; // create a new empty function
-    ChildScope.prototype = this;  // set the function prot to this
-    var child = new ChildScope();  // create the function
+    }
     this.$$children.push(child); // add the new children to the parent childern array as they are created
     child.$$watchers = []; // the trick is to assign each child scope its own $$ watchers array
     this.$$children = [];
