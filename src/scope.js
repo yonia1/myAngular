@@ -250,25 +250,80 @@ Scope.prototype.$$postDigest = function (fn) {
 };
 
 /*Scope inheritance */
-Scope.prototype.$new = function (isolated) {
-    //In the function we first create a counstuctor function for the cfhild and put it
-    // in a local variable we then set the scope as the prototype of ChildScope
-    var child;
-    if (isolated) { // if its isolated then it doesnt inhertes form the parent 
+Scope.prototype.$new = function (isolated, parent) {
+    var child; // the child object
+    parent = parent || this; //parent is optional so if non is given he the invoker is the parent scope
+    if (isolated) {
         child = new Scope();
-        child.$root = this.$root;
-        child.$$asyncQueue = this.$$asyncQueue;
-        child.$$postDigestQueue =this.$$postDigestQueue;
-        child.$$applyAsyncQueue = this.$$applyAsyncQueue;
+        child.$root = parent.$root;
+        child.$$asyncQueue = parent.$$asyncQueue;
+        child.$$postDigestQueue = parent.$$postDigestQueue;
+        child.$$applyAsyncQueue = parent.$$applyAsyncQueue;
+    } else {
+        var ChildScope = function () {
+        };
+        ChildScope.prototype = this;
+        child = new ChildScope();
     }
-    else {
-        var ChildScope = function () {}; // create a new empty function
-        ChildScope.prototype = this;  // set the function prot to this
-        child = new ChildScope();  // create the function
+    parent.$$children.push(child);
+    child.$$watchers = [];
+    child.$$children = [];
+    child.$parent = parent;
+    return child;
+};
+Scope.prototype.$destroy = function () {
+    if (this.$parent) {
+        var siblings = this.$parent.$$children;
+        var indexOfThis = siblings.indexOf(this);
+        if (indexOfThis > 0) {
+            siblings.splice(indexOfThis, 1);
 
+        }
     }
-    this.$$children.push(child); // add the new children to the parent childern array as they are created
-    child.$$watchers = []; // the trick is to assign each child scope its own $$ watchers array
-    this.$$children = [];
-    return child;  // return the new object/ function
+    this.$$watchers = null;
+};
+Scope.prototype.$watchCollection = function (watchFn /*what are we looking at*/, listenerFn /*what do we do when change*/) {
+    var self = this;
+    var newValue;
+    var oldValue;
+    var changeCount = 0;  // use clouser to keep count
+
+    var internalWatchFn = function (scope) {
+        newValue = watchFn(scope);  // run the watch function - what to do when value changes
+        if (_.isObject(newValue)) {
+            if (_.isArray(newValue)) {
+                if(_.isArray(oldValue)){
+                    changeCount++;
+                    oldValue = [];
+                }
+                if(newValue.length !== oldValue.length) {  // notice that the length of the array has changed
+                    changeCount++;
+                    oldValue.length = newValue.length;
+                }
+                _.forEach(newValue , function (newItem ,i) { // iterate over the array and see if there is any changes in any items
+                    var bothNaN = _.isNaN(newItem) && _.isNaN(oldValue[i]);  //  check if the value was and now also a NAN
+                    if (!bothNaN && newItem !== oldValue[i]) {
+                        changeCount++;
+                        oldValue[i] = newItem;
+                    }
+
+                });
+            } else {
+            }
+        } else {
+            if (!self.$$areEqual(newValue, oldValue, false)) {
+                changeCount++;
+            }
+            oldValue = newValue;
+        }
+        return changeCount;
+    };
+
+
+    var internalListenerFn = function () {
+        listenerFn(newValue, oldValue, self); // run what happens when value change
+    };
+
+    return this.$watch(internalWatchFn, internalListenerFn);
+
 };

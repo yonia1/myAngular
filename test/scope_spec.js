@@ -181,25 +181,25 @@ describe("Scope", function () {
             child.$digest();
             expect(child.aValueWas).toBeUndefined();
         });
-        it('executes $evalAsync function on isolated scopes' , function() {
+        it('executes $evalAsync function on isolated scopes', function () {
             var parent = new Scope();
             var child = parent.$new(true);
 
-            child.$evalAsync(function() {
+            child.$evalAsync(function () {
                 scope.didEvalAsync = true;
             });
-            setTimeout(function() {
+            setTimeout(function () {
                 expect(child.didEvalAsync).toBe(true);
                 done();
-            },50);
+            }, 50);
 
 
         });
-        it('executes $$postDigest functions on isolated scopes',function() {
+        it('executes $$postDigest functions on isolated scopes', function () {
             var parent = new Scope();
             var child = parent.$new(true);
 
-            child.$$postDigest(function() {
+            child.$$postDigest(function () {
                 child.didPostDigest = true;
             });
             parent.digest();
@@ -228,7 +228,175 @@ describe("Scope", function () {
             });
 
         });
+        it('works like a normal watch for Nans', function () {
+            scope.aValue = 0 / 0; //nan - Nans are not equal to each other
+            scope.counter = 0;
+            scope.$watchCollection(
+                function (scope) {
+                    return scope.aValue;
+                },
+                function (newValue, oldValue, scope) {
+                    scope.counter++;
+                }
+            );
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+        });
+        it('notices when the value becomes an array', function () {
+            scope.counter = 0;
+            scope.$watchCollection(
+                function (scope) {
+                    return scope.arr
+                }, function (newValue, oldValue, scope) {
+                    scope.counter++;
+                }
+            );
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+            scope.arr = [1, 2, 3];
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+            scope.$digest();
+            expect(scope.counter).toBe(3);
+        });
+        it('notice an item added to an array', function () {
+            scope.arr = [1, 2, 3];
+            scope.counter = 0;
+            scope.$watchCollection(function () {
+                return scope.arr;
+
+            }, function (newValue, oldValue, scope) {
+                scope.counter++;
+            });
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+            scope.arr.push(4);
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+
+
+        });
+        it("notices an item removed from an array", function () {
+            scope.arr = [1, 2, 3];
+            scope.counter = 0;
+            scope.$watchCollection(
+                function (scope) {
+                    return scope.arr;
+                }, function (newValue, oldValue, scope) {
+                    scope.counter++;
+                }
+            );
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+            scope.arr.shift();
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+        });
+        it("notices an item replaced in an array", function () {
+            scope.arr = [1, 2, 3];
+            scope.counter = 0;
+            scope.$watchCollection(
+                function (scope) {
+                    return scope.arr;
+                }, function (newValue, oldValue, scope) {
+                    scope.counter++;
+                }
+            );
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+            scope.arr[1] = 42;
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+        });
+        it("notices items reordered in an array", function () {
+            scope.arr = [2, 1, 3];
+            scope.counter = 0;
+            scope.$watchCollection(
+                function (scope) {
+                    return scope.arr;
+                }, function (newValue, oldValue, scope) {
+                    scope.counter++;
+                }
+            );
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+            scope.arr.sort();
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+        });
+        it(does
+        not
+        fail
+        on
+        NaNs in arrays , function () {
+            scope.arr = [2, NaN, 3];
+            scope.counter = 0;
+            scope.$watchCollection(
+                function (scope) {
+                    return scope.arr;
+                }, function (newValue, oldValue, scope) {
+                    scope.counter++;
+                }
+            );
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+        }
+        )
+        ;
+        it("notices an item replaced in an arguments object", function () {
+            (function () {
+                scope.arrayLike = arguments;
+            })(1, 2, 3);
+            /*
+            * We construct an anonymous function that we immediately call with a few arguments, and store those arguments on the scope.
+             * That gives us the array-like arguments object. We then check whether
+             * changes in that object are picked up by our $watchCollection implementation.
+             * */
+            scope.counter = 0;
+            scope.$watchCollection(
+                function (scope) {
+                    return scope.arrayLike;
+                },
+                function (newValue, oldValue, scope) {
+                    scope.counter++;
+                }
+            );
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+            scope.arrayLike[1] = 42;
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+        });
+        it("notices an item replaced in a NodeList object", function() { document.documentElement.appendChild(document.createElement( div )); scope.arrayLike = document.getElementsByTagName( div );
+            scope.counter = 0;
+            scope.$watchCollection(
+                function(scope) { return scope.arrayLike; }, function(newValue, oldValue, scope) {
+                    scope.counter++;
+                }
+            );
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+            document.documentElement.appendChild(document.createElement( div ));
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+            scope.$digest();
+            expect(scope.counter).toBe(2);
+        });
+
     });
+
 
 });
 /*describe("Scope", function () {
