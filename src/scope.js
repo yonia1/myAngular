@@ -14,6 +14,7 @@ function Scope() {
     this.$$children = [] // add children array on root scope constructor
     this.$root = this; // this is the root scope so every child will inhert this property
     // that is set only once , thanks to the protoypal inheritance chain
+    this.$$listeners = {};
 }
 
 
@@ -345,8 +346,23 @@ Scope.prototype.$watchCollection = function(watchFn, listenerFn) { var self = th
             veryOldValue = _.clone(newValue);
         }
     };
-    return this.$watch(internalWatchFn, internalListenerFn); };
+    return this.$watch(internalWatchFn, internalListenerFn);
 
+}
+// Events
+
+/**
+ * The $on function should check whether we already have a  listener collection for the event
+ * given and intialize one if not it can then just push the new listener function to the collection
+ * @param eventName
+ * @param listener
+ */
+Scope.prototype.$on = function (eventName , listener) {
+    var listeners = this.$$listeners[eventName];
+    if(!listeners) {
+        this.$$listeners[eventName] = listeners = [];
+    }
+    listeners.push(listener);
 }
 
 
