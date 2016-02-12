@@ -385,9 +385,22 @@ Scope.prototype.$on = function (eventName, listener) {
         this.$$listeners[eventName] = listeners = [];
     }
     listeners.push(listener);
+    //Return the remove function using clouser
+    return function () {
+        var idx = listener.indexOf(listener);
+        if (idx >= 0) {
+            listeners[idx] = null;
+        }
+
+    };
 }
+/**
+ * Goes up the scope chain - from son to parent
+
+ */
 Scope.prototype.$emit = function (eventName) {
     var additionalArgs = _.rest(arguments);
+    var scope = this;
     return this.$$fireEventOnScope(eventName, additionalArgs);
 };
 Scope.prototype.$broadcast = function (eventName) {
@@ -398,8 +411,17 @@ Scope.prototype.$$fireEventOnScope = function (eventName, additionalArgs) {
     var event = {name: eventName};
     var listenerArgs = [event].concat(additionalArgs);
     var listeners = this.$$listeners[eventName] || [];
-    _.forEach(listeners, function (listener) {
-        listener.apply(null, listenerArgs);
-    });
+    var i = listeners.length;
+    while(i--)
+    {
+
+        if(listeners[i] = null) {// it is marked up to be deleted
+            listeners.splice(i,1);
+        }
+        else {
+            listeners[i].apply(null, listenerArgs);
+        }
+
+    }
     return event;
 };
