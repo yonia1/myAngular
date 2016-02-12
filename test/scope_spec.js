@@ -553,6 +553,71 @@ describe("Scope", function () {
             expect(child.$$listeners).toEqual({someEvent: [listener2]});
             expect(isolatedChild.$$listeners).toEqual({someEvent: [listener3]});
         });
+        it("calls the listeners of the matching event on $emit", function() { var listener1 = jasmine.createSpy();
+            var listener2 = jasmine.createSpy();
+            scope.$on( someEvent , listener1);
+            scope.$on( someOtherEvent , listener2);
+            scope.$emit( someEvent );
+            expect(listener1).toHaveBeenCalled();
+            expect(listener2).not.toHaveBeenCalled();
+        });
+        /*
+         We’re using Jasmine’s spy functions to represent our listener functions. They are special stub functions that do nothing but record whether they have been called or not, and what arguments they’ve been called with. With spies we can very conveniently check what the scope is doing with our listeners.
+         If you’ve used mock objects or other kinds of test doubles before, spies should look familiar. They might just as well be called mock functions.
+         */
+        it("calls the listeners of the matching event on $broadcast", function() { var listener1 = jasmine.createSpy();
+            var listener1 = jasmine.createSpy();
+            var listener2 = jasmine.createSpy();
+            scope.$on( someEvent , listener1);
+            scope.$on( someOtherEvent , listener2);
+            scope.$broadcast( someEvent );
+            expect(listener1).toHaveBeenCalled();
+            expect(listener2).not.toHaveBeenCalled();
+        });
+        _.forEach([ $emit ,  $broadcast ], function(method) {
+            it("calls listeners registered for matching events on "+method, function() { var listener1 = jasmine.createSpy();
+                var listener2 = jasmine.createSpy();
+                scope.$on( someEvent , listener1);
+                scope.$on( someOtherEvent , listener2);
+                scope[method]( someEvent );
+                expect(listener1).toHaveBeenCalled();
+                expect(listener2).not.toHaveBeenCalled();
+            });
+        });
+        it("passes an event object with a name to listeners on "+method, function() { var listener = jasmine.createSpy();
+            scope.$on( someEvent , listener);
+            scope[method]( someEvent );
+            expect(listener).toHaveBeenCalled();
+            expect(listener.calls.mostRecent().args[0].name).toEqual( someEvent );
+        });
+        it("passes the same event object to each listener on "+method, function() { var listener1 = jasmine.createSpy();
+            var listener2 = jasmine.createSpy();
+            scope.$on( someEvent , listener1);
+            scope.$on( someEvent , listener2);
+            scope[method]( someEvent );
+            var event1 = listener1.calls.mostRecent().args[0]; var event2 = listener2.calls.mostRecent().args[0];
+            expect(event1).toBe(event2);
+        });
+        it("passes additional arguments to listeners on "+method, function() { var listener = jasmine.createSpy();
+            scope.$on( someEvent , listener);
+            scope[method]( someEvent ,  and , [ additional ,  arguments ],  ... );
+            expect(listener.calls.mostRecent().args[1]).toEqual( and );
+            expect(listener.calls.mostRecent().args[2]).toEqual([ additional ,  arguments ]);
+            expect(listener.calls.mostRecent().args[3]).toEqual( ... );
+        });
+        it("returns the event object on "+method, function() { var returnedEvent = scope[method]( someEvent );
+            expect(returnedEvent).toBeDefined();
+            expect(returnedEvent.name).toEqual( someEvent );
+        });
+        it("can be deregistered "+method, function() {
+            var listener = jasmine.createSpy();
+            var deregister = scope.$on( someEvent , listener);
+            deregister();
+            scope[method]( someEvent );
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+
     });
 });
 
