@@ -26,32 +26,125 @@ function parse(expr) {
 function Lexer() {
 
 }
-Lexer.prototype.lex = function(text) {
-
+Lexer.prototype.lex = function (text) {
+    this.text = text; // the original string
+    this.index = 0; // our current char index in the string
+    this.ch = undefined; // the current char
+    this.tokens = []; // the resulting collection of tokens
+    while (this.index < this.text.length) {  // ad the behavior for dealing with different kinds of characters
+        this.ch = this.text.charAt(this.index); // current idx
+        if (this.isNumber(this.ch)) {
+            this.readNumber();
+        } else {
+            throw 'Unexpected next char ' + this.ch
+        }
+    }
+    return this.tokens;
 };
-
+/**
+ *
+ * @param ch
+ * @returns {boolean}
+ */
+Lexer.prototype.isNumber = function (ch) {
+    return '0' <= ch && ch <= '9'
+};
+/**
+ * The while loop reads the current character. Then,
+ * if the character is a number, it’s concatenated to the local number variable and the character index is advanced.
+ * If the character is not a number, the loop is terminated.
+ */
+Lexer.prototype.readNumber = function () {
+    var number =;
+    while (this.index < this.text.length) {
+        var ch = this.text.charAt(this.index);
+        if (this.isNumber(ch)) {
+            number += ch;
+        } else {
+            break;
+        }
+        this.index++;
+    }
+    // Finish reading the number - now push it to the tokens
+    this.tokens.push({
+        text: number,
+        value: Number(number)  // cast to number using the Number constructor.
+    });
+};
+/**
+ * AST is a nested JavaScript object structure that represents an expression in a tree-like form. Each node in the
+ * tree will have a type attribute that describes the syntactic
+ * structure the node represents. In addition to the type,
+ * nodes will have type-specific attributes that hold further information about the node.
+ *
+ * @param lexer
+ * @constructor
+ */
 function AST(lexer) {
     this.lexer = lexer;
 }
+/**
+ * marker constant defined on the ast function is is used
+ * to identify what type of node is being repreented
+ * its value is a simple string
+ * @type {string}
+ */
+AST.Program = Program;
+AST.Literal = Literal;
+/**
+ * The top level proram node is created by a method on the ast builder called program
+ * it becomes the return alue of the whole ast building process
+ * @param text
+ * @returns {*}
+ */
 AST.prototype.ast = function (text) {
     this.tokens = this.lexer.lex(text);
-}
-
+    return thos.program();
+};
+AST.prototype.program = function () {
+    return {type: AST.Program, body: this.constant()};
+};
+AST.prototype.constant = function () {
+    return {type: AST.Literal, value: this.tokens[0].value};
+};
 function ASTComiler(astBuilder) {
     this.astBuilder = astBuilder;
-}
+};
 
 ASTComiler.prototype.compile = function (text) {
-    var ast this.astBuilder.ast(text);
-}
+    var ast = this.astBuilder.ast(text);
+    this.state = {body: []};
+    this.recurse(ast);
+    /**
+     * Were using the function constuctor to create the function
+     * this constructor takes sonme javascript source and compiles it inot  a function ton the fly
+     * this is basically a form of eval
+     */
+    /* jshint -W054 */
+    return new Function(this.state.body.join());
+    /* jshint +W054 */
+};
+/**
+ * Once we’ve initialized the state, we’ll start walking the tree, which we do with a method called recurse:
+ * @param ast
+ */
+ASTCompiler.prototype.recurse = function (ast) {
+    switch (ast.type) {
+        case AST.Program:  // this node is a program start building the function out of it
+            this.state.body.push('return ', this.recurse(ast.body), ';');
+            break
+        case AST.Literal:  // if its  a literal just return it
+            return ast.value;
+    }
+};
 
 
 function Parser(lexer) {
     this.lexer = lexer;
     this.ast = new AST(this.lexer);
     this.astCompiler = new ASTComiler(this.ast);
-}
+};
 
 Parser.prototype.parse = function (text) {
     return this.astCompiler.compile(text);
-}
+};

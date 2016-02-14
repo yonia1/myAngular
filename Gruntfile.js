@@ -34,6 +34,9 @@ module.exports = function(grunt) {
                     watch_files: [
                         'src/**/*.js',
                         'test/**/*.js'
+                    ],
+                    exclude_files: [//to be removed
+                        'test/scope.spec.js'
                     ]
                 }
             }
