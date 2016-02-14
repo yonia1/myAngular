@@ -279,15 +279,22 @@ Scope.prototype.$new = function (isolated, parent) {
     return child;
 };
 Scope.prototype.$destroy = function () {
+    this.$broadcast($destroy);  // broadcast the destroy to children
     if (this.$parent) {
         var siblings = this.$parent.$$children;
         var indexOfThis = siblings.indexOf(this);
-        if (indexOfThis > 0) {
+        if (indexOfThis >= 0) {
             siblings.splice(indexOfThis, 1);
-
         }
     }
     this.$$watchers = null;
+    this.$$listeners = {}; // remove the listeners
+    /**
+     * This leaves the $$listeners on any child scopes untouched but since those scopes
+     * are no longer part of the scope hierarchy they wont be receiving any events unless theres a
+     * reference leak in application code the child scopes along with their listeners woll soon
+     * be garbage collected
+     */
 };
 Scope.prototype.$watchCollection = function (watchFn, listenerFn) {
     var self = this;
@@ -399,29 +406,62 @@ Scope.prototype.$on = function (eventName, listener) {
 
  */
 Scope.prototype.$emit = function (eventName) {
-    var additionalArgs = _.rest(arguments);
+    var propagationStopped = false;
+    var event = {
+        name: eventName,
+        targetScope: this,
+        propagationStopped: function () {
+            propagationStopped = true;   //
+        }
+    };
+    var listenerArgs = [event].concat(_.rest(arguments));
+    // var additionalArgs = _.rest(arguments);  // the rest of the args
     var scope = this;
-    return this.$$fireEventOnScope(eventName, additionalArgs);
-};
-Scope.prototype.$broadcast = function (eventName) {
-    var additionalArgs = _.rest(arguments);
-    return this.$$fireEventOnScope(eventName, additionalArgs);
-};
-Scope.prototype.$$fireEventOnScope = function (eventName, additionalArgs) {
-    var event = {name: eventName};
-    var listenerArgs = [event].concat(additionalArgs);
-    var listeners = this.$$listeners[eventName] || [];
-    var i = listeners.length;
-    while(i--)
-    {
+    // loop parent tree and fire event on scope
+    do {
+        event.currentScope = scope;
+        scope.$$fireEventOnScope(eventName, listenerArgs);
+        scope = scope.$parent;
 
-        if(listeners[i] = null) {// it is marked up to be deleted
-            listeners.splice(i,1);
-        }
-        else {
-            listeners[i].apply(null, listenerArgs);
-        }
-
-    }
+    } while (scope && !propagationStopped);
+    event.currentScope = null;
     return event;
+};
+/**
+ * Vroadcasting down the scope hierarchy
+ * $broadcast is basically the oppiste of  $emit it invokes the listeners on the current scope
+ * and all of it direct and indeirect descendant scope - isolated or not
+ * @param eventName
+ * @returns {{name: *}}
+ */
+Scope.prototype.$broadcast = function (eventName) {
+    var event = {
+        name: eventName, targetScope: this, preventDefault: function () {
+            event.defaultPrevented = true;
+        }
+    };
+    var listenerArgs = [event].concat(_.rest(arguments));
+    this.$$everyScope(function (scope) {
+        event.currentScope = scope;
+        scope.$$fireEventOnScope(eventName, listenerArgs);
+        return true;
+    });
+    return event;
+};
+
+Scope.prototype.$$fireEventOnScope = function (eventName, listenerArgs) {
+    var listeners = this.$$listeners[eventName] || [];
+    var i = 0;
+    while (i < listeners.length) {
+        if (listeners[i] === null) {
+            listeners.splice(i, 1);
+        } else {
+            try {
+                listeners[i].apply(null, listenerArgs);
+            } catch (e) {
+                console.error(e);
+            }
+            i++;
+        }
+    }
 };
