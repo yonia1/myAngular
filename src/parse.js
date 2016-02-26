@@ -33,14 +33,31 @@ Lexer.prototype.lex = function (text) {
     this.tokens = []; // the resulting collection of tokens
     while (this.index < this.text.length) {  // ad the behavior for dealing with different kinds of characters
         this.ch = this.text.charAt(this.index); // current idx
-        if (this.isNumber(this.ch)) {
+        if (this.isNumber(this.ch)
+            || (this.ch === '.'
+            && this.isNumber((this.peek())))) {
             this.readNumber();
-        } else {
+        } else if (this.ch === '\'' || this.ch === "'") {
+            this.readString();
+        }
+        else {
             throw 'Unexpected next char ' + this.ch
         }
     }
     return this.tokens;
 };
+Lexer.prototype.readString = function () {
+    this.index++;
+    var string = "";
+    while(this.index < this.text.length) {
+        var ch = this.text.charAt(this.index);
+        //if the current charis
+        //somthing other than quote we just append the
+        //if its a quote we should emit the token and terminate
+
+        this.index++;
+    }
+}
 /**
  *
  * @param ch
@@ -50,18 +67,60 @@ Lexer.prototype.isNumber = function (ch) {
     return '0' <= ch && ch <= '9'
 };
 /**
+ * It returns the next character in the text,
+ * without moving the current character index forward.
+ * If there is no next character,
+ * peek will return false:
+ * @returns {*}
+ */
+Lexer.prototype.peek = function () {
+    return this.index < this.text.length - 1 ?
+        this.text.charAt(this.index + 1) : false;
+};
+Lexer.prototype.isExpOperator = function (ch) {
+    return ch === '-' || ch === '+'
+    this.isNumber(ch);
+}
+/**
  * The while loop reads the current character. Then,
  * if the character is a number, it’s concatenated to the local number variable and the character index is advanced.
  * If the character is not a number, the loop is terminated.
  */
 Lexer.prototype.readNumber = function () {
-    var number =;
+    var number = ''; // read number as text
     while (this.index < this.text.length) {
-        var ch = this.text.charAt(this.index);
-        if (this.isNumber(ch)) {
+        var ch = this.text.charAt(this.index).toLowerCase();
+
+        if (ch === '.' || this.isNumber(ch)) {
             number += ch;
-        } else {
-            break;
+        }
+        else {
+            /*
+             If the current character is e,
+             and the next character is a valid exponent
+             operator, we should add the current character
+             to the result and proceed.
+             • If the current character is + or -,
+             and the previous character was e, and the next character
+             is a number, we should add the current character to the
+             result and proceed.
+             */
+            var nextCh = this.peek();
+            var prevCh = number.charAt(number.length - 1);
+            if (ch === 'e' && this.isExpOperator(nextCh)) {
+                number += ch;
+            }
+            else if (this.isExpOperator(ch)
+                && prevCh === 'e' &&
+                nextCh && this.isNumber(nextCh)
+            ) {
+                number += ch;
+            } else if (this.isExpOperator(ch) && prevCh === 'e'
+                && (!nextCh || !this.isNumber(nextCh)))
+                throw "Invalid exponent";
+            else {
+                break;
+            }
         }
         this.index++;
     }
