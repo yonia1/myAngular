@@ -3,13 +3,15 @@
  */
 'use strict'
 
+var FN_ARG = /^\s*(_?)(\S+?)\1\s*$/;
+var STRIP_COMMENTS = /(\/\/.*$)|(\/\*.*?\*\/)/mg;
 
-function createInjector(modulesToLoad) {
+function createInjector(modulesToLoad, strictDi) {
     var cache = {};  // save the modules
     // we need to deal with circular dependencies to make sure each module is loaded once
     //
     var loadedModules = {};
-
+    strictDi = (strictDi === true);
     var $provide = {
         constant: function (key, value) {
             if (key === 'hasOwnProperty') {
@@ -18,20 +20,47 @@ function createInjector(modulesToLoad) {
             cache[key] = value;
         }
     };
-    function  anotate(fn) {
-        if(_.isArray(fn)) { // if fn is an array annotate should retunr an array of all but the
+
+    function anotate(fn) {
+        if (_.isArray(fn)) { // if fn is an array annotate should retunr an array of all but the
             //last item of it
-            return fn.slice(0,fn.length-1);
-        } else if(fn.$inject) {
+            return fn.slice(0, fn.length - 1);
+        } else if (fn.$inject) {
             return fn.$inject;
         }
-        else
+        else if (!fn.length) {
             return [];
 
+        } else {
+
+            if (strictDi) {
+                throw  'fn is not using explicit annotation and' +
+                'cannot be invoked in strict mode';
+            }
+            var source = fn.toString().replace(STRIP_COMMENTS, '');
+            var argDeclaration = source.match(FN_ARGS);
+            return _.map(argDeclaration[1].split(','), function (argName) {
+                return argName.match(FN_ARG)[2];
+            });
+        }
+
+
     }
-    function invoke(fn, self,locals) {
+
+    function instantiate(Type ,locals ){
+        var UnwrappedType = _.isArray(Type) ? _.last(Type) : Type;
+        // To set up the prototype chanin we can sonstruct
+        //the object create using the ES5 function
+        //insteda of just making a simple literal
+
+        var instance = Object.create(UnwrappedType.prototype);
+        invoke(Type, instance ,locals);
+        return instance;
+    }
+
+    function invoke(fn, self, locals) {
         //For each argument replace it with the cache object
-        var args = _.map(fn.$inject, function (token) {
+        var args = _.map(annotate(fn), function (token) {
             if (_.isString(token))
             // if the locals can replace the token replace it with the requested value
                 return locals && locals.hasOwnProperty(token) ?
@@ -41,6 +70,9 @@ function createInjector(modulesToLoad) {
                 throw    'Incorrect injection token! Expected a string, got' + token;
         });
         //after replace run
+        if (_.isArray(fn)) {
+            fn = _.last(fn);
+        }
         return fn.apply(self, args);
     }
 
@@ -68,6 +100,7 @@ function createInjector(modulesToLoad) {
             return cache[key];
         },
         annotate: anotate,
-        invoke: invoke
+        invoke: invoke,
+        instantiate: instantiate
     };
 }
