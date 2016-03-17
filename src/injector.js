@@ -18,6 +18,14 @@ function createInjector(modulesToLoad, strictDi) {
                 throw  'hasOwnProperty is not a valid constant name!';
             }
             cache[key] = value;
+        },
+        provider : function(key ,provider) {
+            //for now lets just call the $get
+            //method of the provider
+            //and put the return value in the cache
+            cache[key] = invoke($provider.$get,provider);
+            // get is a  method of the provider object
+            // its this should be bound to that object
         }
     };
 

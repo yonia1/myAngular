@@ -26,12 +26,23 @@ function setupModuleLoader(window) {
             throw  'hasOwnProperty is not a valid module name';
         }
         var invokeQueue = [];
+        // returns a function that has been preconfigured
+        // for tyoe if application compnent
+        // the function pushes to the invoke queue an array
+        // with that method name and any arg given
+        var invokeLater = function(method) {
+            return function () {
+                invokeQueue.push([method , arguments]);
+                return moduleInstance;
+            }
+        };
         var moduleInstance = {
             name: name,
             requires: requires,
-            constant : function(key, value) {
-                invokeQueue.push(['constant', [key,value]]);
-            },
+            constant : invokeLater('constant'),
+
+
+            provider : invokeLater('provider'),
             _invokeQueue: invokeQueue
         }
         modules[name] = moduleInstance;

@@ -276,5 +276,29 @@ describe('annotate', function () {
         var instance = injector.instantiate(Type, {b: 3});
         expect(instance.result).toBe(4);
     });
+    it('injects the $get method of a provider', function () {
+        var module = angular.module('myModule', []);
+        module.constant('a', 1);
+        module.provider('b', {  // create a provider with a get function that
+            //adds 2
+            $get: function (a) {
+                return a + 2;
+            }
+        });
+        var injector = createInjector(['myModule']);
+        expect(injector.get('b')).toBe(3);
+    });
+    it('injects the $get method of a provider lazily ', function () {
+        var module = angular.module('myModule', []);
+        module.provider('b', {
+            $get: function (a) {
+                return a + 2;
+            }
+        });
+        module.provider('a', {$get: _.constant(1)});
+        var injector = createInjector(['myModule']);
+        expect(injector.get('b')).toBe(3);
+    });
+
 
 });
