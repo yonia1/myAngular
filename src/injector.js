@@ -7,6 +7,8 @@ var FN_ARG = /^\s*(_?)(\S+?)\1\s*$/;
 var STRIP_COMMENTS = /(\/\/.*$)|(\/\*.*?\*\/)/mg;
 
 function createInjector(modulesToLoad, strictDi) {
+    var providerCache = {}; // since we c
+    var instanceCache = {};
     var cache = {};  // save the modules
     // we need to deal with circular dependencies to make sure each module is loaded once
     //
@@ -23,12 +25,14 @@ function createInjector(modulesToLoad, strictDi) {
             //for now lets just call the $get
             //method of the provider
             //and put the return value in the cache
-            cache[key] = invoke($provider.$get,provider);
+            providerCache[key+'Provider'] = provider;
             // get is a  method of the provider object
             // its this should be bound to that object
         }
     };
+    function getService(name) {
 
+    }
     function anotate(fn) {
         if (_.isArray(fn)) { // if fn is an array annotate should retunr an array of all but the
             //last item of it
