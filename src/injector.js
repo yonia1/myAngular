@@ -3,116 +3,125 @@
  */
 'use strict'
 
+var FN_ARGS = /^function\s*[^\(]*\(\s*([^\)]*)\)/m;
 var FN_ARG = /^\s*(_?)(\S+?)\1\s*$/;
 var STRIP_COMMENTS = /(\/\/.*$)|(\/\*.*?\*\/)/mg;
-
+var INSTANTIATING = {};
 function createInjector(modulesToLoad, strictDi) {
-    var providerCache = {}; // since we c
+    var providerCache = {};
+    var providerInjector = createInternalInjector(providerCache, function () {
+        throw  'Unknown provider:' + path.join('<-');
+    });
     var instanceCache = {};
-    var cache = {};  // save the modules
-    // we need to deal with circular dependencies to make sure each module is loaded once
-    //
+    var instanceInjector = createInternalInjector(instanceCache, function (name) {
+        var provider = providerInjector.get(name + 'Provider');
+        return instanceInjector.invoke(provider.$get, provider);
+    });
     var loadedModules = {};
+    var path = [];
     strictDi = (strictDi === true);
     var $provide = {
         constant: function (key, value) {
             if (key === 'hasOwnProperty') {
-                throw  'hasOwnProperty is not a valid constant name!';
+                throw  'hasOwnProperty is not a valid constant name! ';
             }
-            cache[key] = value;
+            providerCache[key] = value;
+            instanceCache[key] = value;
         },
-        provider : function(key ,provider) {
-            //for now lets just call the $get
-            //method of the provider
-            //and put the return value in the cache
-            providerCache[key+'Provider'] = provider;
-            // get is a  method of the provider object
-            // its this should be bound to that object
+        provider: function (key, provider) {
+            if (_.isFunction(provider)) {
+                provider = providerInjector.instantiate(provider);
+            }
+            providerCache[key + 'Provider'] = provider;
         }
     };
-    function getService(name) {
 
-    }
-    function anotate(fn) {
-        if (_.isArray(fn)) { // if fn is an array annotate should retunr an array of all but the
-            //last item of it
+    function annotate(fn) {
+        if (_.isArray(fn)) {
             return fn.slice(0, fn.length - 1);
         } else if (fn.$inject) {
             return fn.$inject;
-        }
-        else if (!fn.length) {
+        } else if (!fn.length) {
             return [];
-
         } else {
-
-            if (strictDi) {
-                throw  'fn is not using explicit annotation and' +
-                'cannot be invoked in strict mode';
-            }
             var source = fn.toString().replace(STRIP_COMMENTS, '');
             var argDeclaration = source.match(FN_ARGS);
             return _.map(argDeclaration[1].split(','), function (argName) {
                 return argName.match(FN_ARG)[2];
             });
         }
-
-
     }
 
-    function instantiate(Type ,locals ){
-        var UnwrappedType = _.isArray(Type) ? _.last(Type) : Type;
-        // To set up the prototype chanin we can sonstruct
-        //the object create using the ES5 function
-        //insteda of just making a simple literal
+    function createInternalInjector(cache, factoryFn) {
+        function getService(name) {
+            if (cache.hasOwnProperty(name)) {
+                if (cache[name] === INSTANTIATING) {
+                    throw new Error('Circular dependency found: ' +
+                        name + '  <-  ' + path.join('<- '));
+                }
+                return cache[name];
+            } else {
+                path.unshift(name);
+                cache[name] = INSTANTIATING;
+                try {
+                    return (cache[name] = factoryFn(name));
+                } finally {
+                    path.shift();
 
-        var instance = Object.create(UnwrappedType.prototype);
-        invoke(Type, instance ,locals);
-        return instance;
-    }
-
-    function invoke(fn, self, locals) {
-        //For each argument replace it with the cache object
-        var args = _.map(annotate(fn), function (token) {
-            if (_.isString(token))
-            // if the locals can replace the token replace it with the requested value
-                return locals && locals.hasOwnProperty(token) ?
-                    locals[token] :
-                    cache[token];
-            else
-                throw    'Incorrect injection token! Expected a string, got' + token;
-        });
-        //after replace run
-        if (_.isArray(fn)) {
-            fn = _.last(fn);
+                    if (cache[name] === INSTANTIATING) {
+                        delete cache[name];
+                    }
+                }
+            }
         }
-        return fn.apply(self, args);
-    }
 
+        function invoke(fn, self, locals) {
+            var args = _.map(annotate(fn), function (token) {
+                if (_.isString(token)) {
+                    return locals && locals.hasOwnProperty(token) ?
+                        locals[token] :
+                        getService(token);
+                } else {
+                    throw  'Incorrect injection token! Expected a string, got' + token;
+                }
+            });
+            if (_.isArray(fn)) {
+                fn = _.last(fn);
+            }
+            return fn.apply(self, args);
+        }
+
+        function instantiate(Type, locals) {
+            var UnwrappedType = _.isArray(Type) ? _.last(Type) : Type;
+            var instance = Object.create(UnwrappedType.prototype);
+            invoke(Type, instance, locals);
+            return instance;
+        }
+
+        return {
+            has: function (name) {
+                return cache.hasOwnProperty(name) || providerCache.hasOwnProperty(name + Provider);
+            },
+            get: getService,
+            annotate: annotate,
+            invoke: invoke,
+            instantiate: instantiate
+        };
+    }
 
     _.forEach(modulesToLoad, function loadModule(moduleName) {
         if (!loadedModules.hasOwnProperty(moduleName)) {
             loadedModules[moduleName] = true;
-            var module = angular.module(moduleName); // ask for the module
+            var module = angular.module(moduleName);
             _.forEach(module.requires, loadModule);
-
-            forEach(nodule._invokeQueue, function (invokeArgs) {
+            _.forEach(module._invokeQueue, function (invokeArgs) {
                 var method = invokeArgs[0];
                 var args = invokeArgs[1];
                 $provide[method].apply($provide, args);
+
+
             });
         }
-
-
     });
-    return {
-        has: function (key) {
-            return cache.hasOwnProperty(key);
-        },
-        get: function (key) { // using clouser
-            return cache[key];
-        },
-        annotate: anotate,
-        invoke: invoke,
-        instantiate: instantiate
-    };
+    return instanceInjector;
 }
